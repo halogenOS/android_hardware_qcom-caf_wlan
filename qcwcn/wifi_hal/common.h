@@ -266,6 +266,10 @@ wifi_error wifi_virtual_interface_delete(wifi_handle handle, const char* ifname)
 wifi_error wifi_get_radar_history(wifi_interface_handle handle,
         radar_history_result *resultBuf, int resultBufSize, int *numResults);
 wifi_error wifi_disable_next_cac(wifi_interface_handle handle);
+
+wifi_error wifi_get_supported_radio_combinations_matrix(
+        wifi_handle handle, u32 max_size, u32 *size,
+        wifi_radio_combination_matrix *radio_combination_matrix);
 // some common macros
 
 #define min(x, y)       ((x) < (y) ? (x) : (y))
@@ -276,6 +280,7 @@ wifi_error wifi_disable_next_cac(wifi_interface_handle handle);
 #define get_requestid() ((arc4random()%REQUEST_ID_MAX) + 1)
 #define get_requestid_u8() ((arc4random()%REQUEST_ID_U8_MAX) + 1)
 #define WAIT_TIME_FOR_SET_REG_DOMAIN 50000
+#define ITER_COUNT_FOR_SET_REG_DOMAIN 10
 
 #ifndef UNUSED
 #define UNUSED(x)    (void)(x)
