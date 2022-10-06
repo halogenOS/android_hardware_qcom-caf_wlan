@@ -24,6 +24,41 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *
+ *   * Redistributions in binary form must reproduce the above
+ *     copyright notice, this list of conditions and the following
+ *     disclaimer in the documentation and/or other materials provided
+ *     with the distribution.
+ *
+ *   * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *     contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "sync.h"
@@ -41,6 +76,13 @@
 #include <net/if_arp.h>
 #include <sys/socket.h>
 #include "wificonfigcommand.h"
+#include "ifaceeventhandler.h"
+
+
+#define NUM_OF_SAR_LIMITS_SPECS 2
+#define NUM_OF_SPEC_CHAINS 2
+
+
 
 /* Implementation of the API functions exposed in wifi_config.h */
 wifi_error wifi_extended_dtim_config_set(wifi_request_id id,
@@ -85,6 +127,7 @@ wifi_error wifi_extended_dtim_config_set(wifi_request_id id,
     /* Add the vendor specific attributes for the NL command. */
     nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
     if (!nlData) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("wifi_extended_dtim_config_set: failed attr_start for "
             "VENDOR_DATA. Error:%d", ret);
         goto cleanup;
@@ -386,6 +429,7 @@ wifi_error wifi_set_qpower(wifi_interface_handle iface,
     /* Add the vendor specific attributes for the NL command. */
     nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
     if (!nlData) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("wifi_set_qpower: failed attr_start for "
             "VENDOR_DATA. Error:%d", ret);
         goto cleanup;
@@ -393,6 +437,7 @@ wifi_error wifi_set_qpower(wifi_interface_handle iface,
 
     if (wifiConfigCommand->put_u8(
         QCA_WLAN_VENDOR_ATTR_CONFIG_QPOWER, powersave)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("wifi_set_qpower(): failed to put vendor data. "
             "Error:%d", ret);
         goto cleanup;
@@ -454,6 +499,7 @@ wifi_error wifi_set_beacon_wifi_iface_stats_averaging_factor(
     /* Add the vendor specific attributes for the NL command. */
     nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
     if (!nlData) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("wifi_set_beacon_wifi_iface_stats_averaging_factor: failed "
             "attr_start for VENDOR_DATA. Error:%d", ret);
         goto cleanup;
@@ -461,6 +507,7 @@ wifi_error wifi_set_beacon_wifi_iface_stats_averaging_factor(
 
     if (wifiConfigCommand->put_u32(
         QCA_WLAN_VENDOR_ATTR_CONFIG_STATS_AVG_FACTOR, factor)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("wifi_set_beacon_wifi_iface_stats_averaging_factor(): failed to "
             "put vendor data. Error:%d", ret);
         goto cleanup;
@@ -520,6 +567,7 @@ wifi_error wifi_set_guard_time(wifi_request_id id,
     /* Add the vendor specific attributes for the NL command. */
     nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
     if (!nlData) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("wifi_set_guard_time: failed attr_start for VENDOR_DATA. "
             "Error:%d", ret);
         goto cleanup;
@@ -527,6 +575,7 @@ wifi_error wifi_set_guard_time(wifi_request_id id,
 
     if (wifiConfigCommand->put_u32(
         QCA_WLAN_VENDOR_ATTR_CONFIG_GUARD_TIME, guard_time)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("wifi_set_guard_time: failed to add vendor data.");
         goto cleanup;
     }
@@ -545,7 +594,8 @@ cleanup:
     return ret;
 }
 
-wifi_error wifi_select_tx_power_scenario(wifi_interface_handle handle,
+
+wifi_error wifi_select_SARv01_tx_power_scenario(wifi_interface_handle handle,
                                          wifi_power_scenario scenario)
 {
     wifi_error ret;
@@ -584,6 +634,7 @@ wifi_error wifi_select_tx_power_scenario(wifi_interface_handle handle,
     /* Add the vendor specific attributes for the NL command. */
     nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
     if (!nlData) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("wifi_select_tx_power_scenario: failed attr_start for VENDOR_DATA. "
             "Error:%d", ret);
         goto cleanup;
@@ -616,6 +667,7 @@ wifi_error wifi_select_tx_power_scenario(wifi_interface_handle handle,
     if (wifiConfigCommand->put_u32(
                       QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SAR_ENABLE,
                       bdf_file)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("failed to put SAR_ENABLE");
         goto cleanup;
     }
@@ -631,6 +683,181 @@ cleanup:
     delete wifiConfigCommand;
     return ret;
 }
+
+wifi_error wifi_select_SARv02_tx_power_scenario(wifi_interface_handle handle,
+                                         wifi_power_scenario scenario)
+{
+    wifi_error ret;
+    WiFiConfigCommand *wifiConfigCommand;
+    struct nlattr *nlData, *nlSpecList, *nlSpec;
+    interface_info *ifaceInfo = getIfaceInfo(handle);
+    wifi_handle wifiHandle = getWifiHandle(handle);
+    u32 power_lim_idx = 0;
+
+    ALOGV("%s : power scenario SARV2:%d", __FUNCTION__, scenario);
+
+    wifiConfigCommand = new WiFiConfigCommand(
+                            wifiHandle,
+                            1,
+                            OUI_QCA,
+                            QCA_NL80211_VENDOR_SUBCMD_SET_SAR_LIMITS);
+    if (wifiConfigCommand == NULL) {
+        ALOGE("%s: Error wifiConfigCommand NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    /* Create the NL message. */
+    ret = wifiConfigCommand->create();
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("wifi_select_tx_power_scenario: failed to create NL msg. Error:%d", ret);
+        goto cleanup;
+    }
+
+    /* Set the interface Id of the message. */
+    ret = wifiConfigCommand->set_iface_id(ifaceInfo->name);
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("wifi_select_tx_power_scenario: failed to set iface id. Error:%d", ret);
+        goto cleanup;
+    }
+
+    /* Add the vendor specific attributes for the NL command. */
+    nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
+    if (!nlData) {
+        ret = WIFI_ERROR_UNKNOWN;
+        ALOGE("wifi_select_tx_power_scenario: failed attr_start for VENDOR_DATA.");
+        goto cleanup;
+    }
+
+    if (wifiConfigCommand->put_u32(
+                  QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SAR_ENABLE,
+                  QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SELECT_V2_0)) {
+        ret = WIFI_ERROR_UNKNOWN;
+        ALOGE("failed to put SAR_ENABLE");
+        goto cleanup;
+    }
+
+    if (wifiConfigCommand->put_u32(
+                  QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_NUM_SPECS,
+                  NUM_OF_SAR_LIMITS_SPECS)) {
+        ret = WIFI_ERROR_UNKNOWN;
+        ALOGE("failed to put SAR_LIMITS_NUM_SPECS");
+        goto cleanup;
+    }
+
+    switch (scenario) {
+        case WIFI_POWER_SCENARIO_VOICE_CALL:
+        case WIFI_POWER_SCENARIO_ON_HEAD_CELL_ON:
+        case WIFI_POWER_SCENARIO_ON_HEAD_HOTSPOT:
+        case WIFI_POWER_SCENARIO_ON_HEAD_HOTSPOT_MMW:
+
+            power_lim_idx = 0;
+            break;
+
+        case WIFI_POWER_SCENARIO_ON_HEAD_CELL_OFF:
+            power_lim_idx = 1;
+            break;
+
+        case WIFI_POWER_SCENARIO_ON_BODY_HOTSPOT:
+        case WIFI_POWER_SCENARIO_ON_BODY_HOTSPOT_BT:
+        case WIFI_POWER_SCENARIO_ON_BODY_HOTSPOT_MMW:
+        case WIFI_POWER_SCENARIO_ON_BODY_HOTSPOT_BT_MMW:
+            power_lim_idx = 2;
+            break;
+
+        case WIFI_POWER_SCENARIO_ON_BODY_CELL_ON:
+            power_lim_idx = 3;
+            break;
+
+        case WIFI_POWER_SCENARIO_ON_BODY_CELL_ON_BT:
+            power_lim_idx = 4;
+            break;
+
+        case WIFI_POWER_SCENARIO_ON_BODY_CELL_OFF:
+        case WIFI_POWER_SCENARIO_ON_BODY_BT:
+            power_lim_idx = 5;
+            break;
+        default:
+            ALOGE("wifi_select_tx_power_scenario: invalid scenario %d", scenario);
+            ret = WIFI_ERROR_INVALID_ARGS;
+            goto cleanup;
+    }
+
+
+    nlSpecList = wifiConfigCommand->attr_start(QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SPEC);
+    if(!nlSpecList)
+    {
+        ALOGE("Cannot create spec list");
+        ret = WIFI_ERROR_UNKNOWN;
+        goto cleanup;
+    }
+
+
+    for (int i = 0; i < NUM_OF_SPEC_CHAINS; i++) {
+        nlSpec = wifiConfigCommand->attr_start(0);
+        if(!nlSpec) {
+            ret = WIFI_ERROR_UNKNOWN;
+            goto cleanup;
+        }
+        if(wifiConfigCommand->put_u32(
+            QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SPEC_CHAIN,
+            i))
+        {
+            ALOGE("Failed to put: QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SPEC_CHAIN");
+            ret = WIFI_ERROR_UNKNOWN;
+            goto cleanup;
+        }
+
+        if(wifiConfigCommand->put_u32(
+            QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SPEC_POWER_LIMIT_INDEX,
+            power_lim_idx))
+        {
+            ALOGE("Failed to put: QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SPEC_POWER_LIMIT_INDEX");
+            ret = WIFI_ERROR_UNKNOWN;
+            goto cleanup;
+        }
+
+        wifiConfigCommand->attr_end(nlSpec);
+    }
+
+
+
+    wifiConfigCommand->attr_end(nlSpecList);
+
+    wifiConfigCommand->attr_end(nlData);
+    ALOGV("wifi_select_tx_power_scenario %u selected", power_lim_idx);
+    ret = wifiConfigCommand->requestEvent();
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("wifi_select_tx_power_scenario(): requestEvent Error:%d", ret);
+        goto cleanup;
+    }
+
+cleanup:
+    delete wifiConfigCommand;
+    return ret;
+}
+
+
+wifi_error wifi_select_tx_power_scenario(wifi_interface_handle handle,
+                                         wifi_power_scenario scenario)
+{
+
+    wifi_handle wifiHandle = getWifiHandle(handle);
+    hal_info *info = getHalInfo(wifiHandle);
+    if (info == NULL) {
+        ALOGE("%s: Error hal_info NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+    ALOGV("wifi_select_tx_power_scenario: sarVer%u", (u32)info->sar_version);
+    if(info->sar_version == QCA_WLAN_VENDOR_SAR_VERSION_1)
+      return wifi_select_SARv01_tx_power_scenario(handle,scenario);
+    else if(info->sar_version == QCA_WLAN_VENDOR_SAR_VERSION_2)
+      return wifi_select_SARv02_tx_power_scenario(handle,scenario);
+    else {
+      ALOGE("wifi_select_tx_power_scenario %u invalid or not supported", (u32)info->sar_version);
+      return WIFI_ERROR_UNKNOWN;
+    }
+}
+
 
 wifi_error wifi_reset_tx_power_scenario(wifi_interface_handle handle)
 {
@@ -667,6 +894,7 @@ wifi_error wifi_reset_tx_power_scenario(wifi_interface_handle handle)
     /* Add the vendor specific attributes for the NL command. */
     nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
     if (!nlData) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("wifi_reset_tx_power_scenario: failed attr_start for VENDOR_DATA. "
             "Error:%d", ret);
         goto cleanup;
@@ -674,6 +902,7 @@ wifi_error wifi_reset_tx_power_scenario(wifi_interface_handle handle)
 
     if (wifiConfigCommand->put_u32(QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SAR_ENABLE,
                                QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SELECT_NONE)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("failed to put SAR_ENABLE or NUM_SPECS");
         goto cleanup;
     }
@@ -726,12 +955,14 @@ wifi_error wifi_set_thermal_mitigation_mode(wifi_handle handle,
     /* Set the interface Id of the message. */
     if (wifiConfigCommand->put_u32(NL80211_ATTR_IFINDEX,
                                    info->interfaces[0]->id)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("%s: Failed to put iface id", __FUNCTION__);
-         goto cleanup;
+        goto cleanup;
     }
 
     nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
     if (!nlData) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("%s: Failed in attr_start for VENDOR_DATA, Error:%d",
               __FUNCTION__, ret);
         goto cleanup;
@@ -739,6 +970,7 @@ wifi_error wifi_set_thermal_mitigation_mode(wifi_handle handle,
 
     if (wifiConfigCommand->put_u32(QCA_WLAN_VENDOR_ATTR_THERMAL_CMD_VALUE,
                              QCA_WLAN_VENDOR_ATTR_THERMAL_CMD_TYPE_SET_LEVEL)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("Failed to put THERMAL_LEVEL command type");
         goto cleanup;
     }
@@ -771,6 +1003,7 @@ wifi_error wifi_set_thermal_mitigation_mode(wifi_handle handle,
     if (wifiConfigCommand->put_u32(
                              QCA_WLAN_VENDOR_ATTR_THERMAL_LEVEL,
                              qca_vendor_thermal_level)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("Failed to put thermal level");
         goto cleanup;
     }
@@ -778,6 +1011,7 @@ wifi_error wifi_set_thermal_mitigation_mode(wifi_handle handle,
     if (wifiConfigCommand->put_u32(
                              QCA_WLAN_VENDOR_ATTR_THERMAL_COMPLETION_WINDOW,
                              completion_window)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("Failed to put thermal completion window");
         goto cleanup;
     }
@@ -1107,6 +1341,7 @@ wifi_error wifi_virtual_interface_create(wifi_handle handle,
     if (iface_type == WIFI_INTERFACE_TYPE_STA) {
          int sock = socket(AF_INET, SOCK_DGRAM, 0);
          if(sock < 0) {
+             ret = WIFI_ERROR_UNKNOWN;
              ALOGE("%s :socket error, Failed to bring up iface \n", __func__);
              goto done;
         }
@@ -1114,11 +1349,13 @@ wifi_error wifi_virtual_interface_create(wifi_handle handle,
         memset(&ifr, 0, sizeof(ifr));
         strlcpy(ifr.ifr_name, ifname, IFNAMSIZ);
         if (ioctl(sock, SIOCGIFFLAGS, &ifr) != 0) {
+            ret = WIFI_ERROR_UNKNOWN;
             ALOGE("%s :Could not read interface %s flags \n", __func__, ifname);
             goto done;
         }
         ifr.ifr_flags |= IFF_UP;
         if (ioctl(sock, SIOCSIFFLAGS, &ifr) != 0) {
+            ret = WIFI_ERROR_UNKNOWN;
             ALOGE("%s :Could not bring iface %s up \n", __func__, ifname);
         }
     }
@@ -1230,6 +1467,7 @@ wifi_error wifi_set_latency_mode(wifi_interface_handle iface,
     /* Add the vendor specific attributes for the NL command. */
     nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
     if (!nlData) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("%s: failed attr_start for VENDOR_DATA. Error:%d",
             __FUNCTION__, ret);
         goto cleanup;
@@ -1237,6 +1475,7 @@ wifi_error wifi_set_latency_mode(wifi_interface_handle iface,
 
     if (wifiConfigCommand->put_u16(
         QCA_WLAN_VENDOR_ATTR_CONFIG_LATENCY_LEVEL, level)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("%s: failed to put vendor data. Error:%d",
             __FUNCTION__, ret);
         goto cleanup;
@@ -1303,6 +1542,7 @@ wifi_error wifi_multi_sta_set_primary_connection(wifi_handle handle,
     /* Add the vendor specific attributes for the NL command. */
     nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
     if (!nlData) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("%s: failed attr_start for VENDOR_DATA. Error:%d",
             __FUNCTION__, ret);
         goto cleanup;
@@ -1310,6 +1550,7 @@ wifi_error wifi_multi_sta_set_primary_connection(wifi_handle handle,
 
     if (wifiConfigCommand->put_u8(
         QCA_WLAN_VENDOR_ATTR_CONFIG_CONCURRENT_STA_PRIMARY, 1)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("%s: failed to put vendor data. Error:%d",
             __FUNCTION__, ret);
         goto cleanup;
@@ -1388,13 +1629,15 @@ wifi_error wifi_multi_sta_set_use_case(wifi_handle handle,
     /* Set the interface Id of the message. */
     if (wifiConfigCommand->put_u32(NL80211_ATTR_IFINDEX,
                                    info->interfaces[0]->id)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("%s: Failed to put iface id", __FUNCTION__);
-         goto cleanup;
+        goto cleanup;
     }
 
     /* Add the vendor specific attributes for the NL command. */
     nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
     if (!nlData) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("%s: failed attr_start for VENDOR_DATA. Error:%d",
             __FUNCTION__, ret);
         goto cleanup;
@@ -1402,6 +1645,7 @@ wifi_error wifi_multi_sta_set_use_case(wifi_handle handle,
 
     if (wifiConfigCommand->put_u8(
         QCA_WLAN_VENDOR_ATTR_CONCURRENT_STA_POLICY_CONFIG, use_case)) {
+        ret = WIFI_ERROR_UNKNOWN;
         ALOGE("%s: failed to put use_case. Error:%d",
             __FUNCTION__, ret);
         goto cleanup;
