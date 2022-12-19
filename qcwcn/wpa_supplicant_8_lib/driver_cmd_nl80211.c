@@ -1,5 +1,5 @@
 /*
- * Driver interaction with extended Linux CFG8021
+ * Driver interaction with extended Linux CFG80211
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -70,6 +70,7 @@
 #include "android_drv.h"
 #endif
 #include "driver_cmd_nl80211_extn.h"
+#include "driver_cmd_nl80211_common.h"
 
 #define WPA_PS_ENABLED		0
 #define WPA_PS_DISABLED		1
@@ -163,6 +164,9 @@
 #define AP_AC_VALUE_STR_LEN             strlen(AP_AC_VALUE_STR)
 #define MAC_ADDR_STR_LEN             	strlen(MAC_ADDRESS_STR)
 
+// Module defined MAC ADDR macros to print full mac address.
+// This is in order to remove dependency from MAC2STR definitions
+// in common.h from wpa_supplicant.
 #define MAC_ADDR_STR "%02x:%02x:%02x:%02x:%02x:%02x"
 #define MAC_ADDR_ARRAY(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
 
@@ -227,6 +231,8 @@ struct twt_resp_info {
 
 static int wpa_driver_twt_async_resp_event(struct wpa_driver_nl80211_data *drv,
 					   u32 vendor_id, u32 subcmd, u8 *data, size_t len);
+static int wpa_driver_elna_resp_handler(struct resp_info *info, struct nlattr *vendata,
+		                        int datalen);
 
 /* ============ nl80211 driver extensions ===========  */
 enum csi_state {
@@ -431,9 +437,8 @@ static void wpa_driver_notify_country_change(void *ctx, char *cmd)
 static struct remote_sta_info g_sta_info = {0};
 static struct bss_info g_bss_info = {0};
 
-static struct nl_msg *prepare_nlmsg(struct wpa_driver_nl80211_data *drv,
-				    char *ifname, int cmdid, int subcmd,
-				    int flag)
+struct nl_msg *prepare_nlmsg(struct wpa_driver_nl80211_data *drv,
+		             char *ifname, int cmdid, int subcmd, int flag)
 {
 	int res;
 	struct nl_msg *nlmsg = nlmsg_alloc();
@@ -479,8 +484,8 @@ cleanup:
 	return NULL;
 }
 
-static struct nl_msg *prepare_vendor_nlmsg(struct wpa_driver_nl80211_data *drv,
-					   char *ifname, int subcmd)
+struct nl_msg *prepare_vendor_nlmsg(struct wpa_driver_nl80211_data *drv,
+		                    char *ifname, int subcmd)
 {
 	return prepare_nlmsg(drv, ifname, NL80211_CMD_VENDOR, subcmd, 0);
 }
@@ -799,6 +804,15 @@ static int handle_response(struct resp_info *info, struct nlattr *vendata,
 		os_memset(info->reply_buf, 0, info->reply_buf_len);
 		parse_get_feature_info(info, vendata, datalen);
 		break;
+	case QCA_NL80211_VENDOR_SUBCMD_SR:
+		os_memset(info->reply_buf, 0, info->reply_buf_len);
+		sr_response_handler(info, vendata, datalen);
+		break;
+	case QCA_NL80211_VENDOR_SUBCMD_GET_WIFI_CONFIGURATION:
+		os_memset(info->reply_buf, 0, info->reply_buf_len);
+		if (info->sub_attr == QCA_WLAN_VENDOR_ATTR_CONFIG_ELNA_BYPASS)
+			wpa_driver_elna_resp_handler(info, vendata, datalen);
+		break;
 	default:
 		wpa_printf(MSG_ERROR,"Unsupported response type: %d", info->subcmd);
 		break;
@@ -806,7 +820,7 @@ static int handle_response(struct resp_info *info, struct nlattr *vendata,
 	return 0;
 }
 
-static int response_handler(struct nl_msg *msg, void *arg)
+int response_handler(struct nl_msg *msg, void *arg)
 {
 	struct genlmsghdr *mHeader;
 	struct nlattr *mAttributes[NL80211_ATTR_MAX_INTERNAL + 1];
@@ -836,7 +850,7 @@ static int response_handler(struct nl_msg *msg, void *arg)
 	return status;
 }
 
-static int ack_handler(struct nl_msg *msg, void *arg)
+int ack_handler(struct nl_msg *msg, void *arg)
 {
 	int *err = (int *)arg;
 
@@ -848,7 +862,7 @@ int wpa_driver_nl80211_oem_event(struct wpa_driver_nl80211_data *drv,
 					   u32 vendor_id, u32 subcmd,
 					   u8 *data, size_t len)
 {
-	int ret = -1, lib_n;
+	int ret = WPA_DRIVER_OEM_STATUS_ENOSUPP, lib_n;
 	if (wpa_driver_oem_initialize(&oem_cb_table) != WPA_DRIVER_OEM_STATUS_FAILURE &&
 	    oem_cb_table) {
 		for (lib_n = 0;
@@ -907,6 +921,9 @@ int wpa_driver_nl80211_driver_event(struct wpa_driver_nl80211_data *drv,
 						   status);
 			}
 			break;
+		case QCA_NL80211_VENDOR_SUBCMD_SR:
+			ret = wpa_driver_sr_event(drv, vendor_id, subcmd, data, len);
+			break;
 		default:
 			break;
 	}
@@ -941,7 +958,7 @@ int wpa_driver_nl80211_diag_msg_event(struct nl_msg *msg, void *ctx)
 	return ret;
 }
 
-static int finish_handler(struct nl_msg *msg, void *arg)
+int finish_handler(struct nl_msg *msg, void *arg)
 {
 	int *ret = (int *)arg;
 
@@ -950,8 +967,8 @@ static int finish_handler(struct nl_msg *msg, void *arg)
 }
 
 
-static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err,
-						 void *arg)
+int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err,
+		  void *arg)
 {
 	int *ret = (int *)arg;
 
@@ -962,13 +979,13 @@ static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err,
 }
 
 
-static int no_seq_check(struct nl_msg *msg, void *arg)
+int no_seq_check(struct nl_msg *msg, void *arg)
 {
 	return NL_OK;
 }
 
-static int send_nlmsg(struct nl_sock *cmd_sock, struct nl_msg *nlmsg,
-		      nl_recvmsg_msg_cb_t customer_cb, void *arg)
+int send_nlmsg(struct nl_sock *cmd_sock, struct nl_msg *nlmsg,
+	       nl_recvmsg_msg_cb_t customer_cb, void *arg)
 {
 	int err = 0;
 	struct nl_cb *cb = nl_cb_alloc(NL_CB_DEFAULT);
@@ -1155,7 +1172,7 @@ static int populate_nlmsg(struct nl_msg *nlmsg, char *cmd,
 	return 0;
 }
 
-static char *skip_white_space(char *cmd)
+char *skip_white_space(char *cmd)
 {
 	char *pos = cmd;
 
@@ -5593,6 +5610,201 @@ int wpa_driver_cmd_send_peer_flush_queue_config(struct i802_bss *bss, char *cmd)
 	return -EINVAL;
 }
 
+static int wpa_driver_elna_resp_handler(struct resp_info *info, struct nlattr *vendata, int datalen)
+{
+	int ret;
+	u8 mode_status;
+	struct wpa_driver_nl80211_data *drv;
+	struct nlattr *elna_attr[QCA_WLAN_VENDOR_ATTR_CONFIG_MAX + 1];
+	static struct nla_policy config_policy[QCA_WLAN_VENDOR_ATTR_CONFIG_MAX + 1] = {
+		[QCA_WLAN_VENDOR_ATTR_CONFIG_ELNA_BYPASS] = {.type = NLA_U8 },
+	};
+
+	if (!info || !info->reply_buf || !info->drv) {
+		wpa_printf(MSG_ERROR, "%s:Invalid arguments\n", __func__);
+		return -EINVAL;
+	}
+
+	drv = info->drv;
+	if (nla_parse(elna_attr, QCA_WLAN_VENDOR_ATTR_CONFIG_MAX,
+		      vendata, datalen, config_policy)) {
+		wpa_printf(MSG_ERROR, "elna mode parse fail\n");
+		return -EINVAL;
+	}
+
+	if (elna_attr[QCA_WLAN_VENDOR_ATTR_CONFIG_ELNA_BYPASS]) {
+		mode_status = nla_get_u8(elna_attr[QCA_WLAN_VENDOR_ATTR_CONFIG_ELNA_BYPASS]);
+		ret = os_snprintf(info->reply_buf, info->reply_buf_len, "%d", mode_status);
+		if (os_snprintf_error(info->reply_buf_len, ret)) {
+			wpa_printf(MSG_ERROR, "%s:Fail to print buffer\n", __func__);
+			return -EINVAL;
+		}
+		wpa_msg(drv->ctx, MSG_INFO, "%s", info->reply_buf);
+	} else {
+		wpa_printf(MSG_ERROR, "elna mode not found\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int wpa_driver_set_elnabypass_cmd(struct i802_bss *bss, char *cmd, char *buf, size_t buf_len)
+{
+	struct wpa_driver_nl80211_data *drv;
+	struct nl_msg *nlmsg;
+	struct nlattr *attr;
+	int mode, if_index, ret;
+	char *iface;
+
+	if (!bss || !bss->drv || !buf || !buf_len) {
+		wpa_printf(MSG_ERROR, "%s:Invalid arguments\n", __func__);
+		return -EINVAL;
+	}
+
+	drv = bss->drv;
+	cmd = skip_white_space(cmd);
+	if (!cmd) {
+		wpa_printf(MSG_ERROR, "Invalid elna command\n");
+		return -EINVAL;
+	}
+
+	iface = strchr(cmd, ' ');
+	if (!iface) {
+		wpa_printf(MSG_ERROR, "Invalid elna command\n");
+		return -EINVAL;
+	} else {
+		*iface = '\0';
+		iface = cmd;
+	}
+
+	if_index = if_nametoindex(iface);
+	if (if_index == 0) {
+		wpa_printf(MSG_ERROR, "%s:iface not found\n", __func__);
+		return -EINVAL;
+	}
+
+	cmd += strlen(iface) + 1;
+	if (!cmd) {
+		wpa_printf(MSG_ERROR, "Invalid elna command\n");
+		return -EINVAL;
+	}
+
+	cmd = skip_white_space(cmd);
+	mode = atoi(cmd);
+	if (mode < 0 || mode > 2) {
+		wpa_printf(MSG_ERROR, "Invalid elna mode:%d\n", mode);
+		return -EINVAL;
+	}
+
+	nlmsg = prepare_vendor_nlmsg(drv, iface,
+			             QCA_NL80211_VENDOR_SUBCMD_SET_WIFI_CONFIGURATION);
+	if (!nlmsg) {
+		ret = -ENOMEM;
+		wpa_printf(MSG_ERROR, "Fail to allocate nl msg for elna cmd, error:%d\n", ret);
+		return ret;
+	}
+
+	attr = nla_nest_start(nlmsg, NL80211_ATTR_VENDOR_DATA);
+	if (!attr) {
+		ret = -ENOMEM;
+		wpa_printf(MSG_ERROR, "Fail to create elna nl attribute, error:%d\n", ret);
+		goto nlmsg_fail;
+	}
+
+	if (nla_put_u8(nlmsg, QCA_WLAN_VENDOR_ATTR_CONFIG_ELNA_BYPASS, mode)) {
+		ret = -EINVAL;
+		wpa_printf(MSG_ERROR, "Fail to put elna mode\n");
+		goto nlmsg_fail;
+	}
+	nla_nest_end(nlmsg, attr);
+	ret = send_nlmsg((struct nl_sock *)drv->global->nl, nlmsg, NULL, NULL);
+	if (ret) {
+		wpa_printf(MSG_ERROR, "Fail to send elna cmd nlmsg to driver, error:%d\n", ret);
+		return -EINVAL;
+	}
+
+	return 0;
+
+nlmsg_fail:
+	nlmsg_free(nlmsg);
+	return ret;
+}
+
+static int wpa_driver_get_elnabypass_cmd(struct i802_bss *bss, char *cmd, char *buf, size_t buf_len)
+{
+	struct wpa_driver_nl80211_data *drv;
+	struct nl_msg *nlmsg;
+	struct nlattr *attr;
+	struct resp_info info;
+	int if_index, ret;
+	char *iface;
+
+	if (!bss || !bss->drv || !buf || !buf_len) {
+		wpa_printf(MSG_ERROR, "%s:Invalid arguments\n", __func__);
+		return -EINVAL;
+	}
+
+	drv = bss->drv;
+	memset(&info, 0, sizeof(info));
+	info.reply_buf = buf;
+	info.reply_buf_len = buf_len;
+	info.drv = drv;
+	info.subcmd = QCA_NL80211_VENDOR_SUBCMD_GET_WIFI_CONFIGURATION;
+	info.sub_attr = QCA_WLAN_VENDOR_ATTR_CONFIG_ELNA_BYPASS;
+	cmd = skip_white_space(cmd);
+	if (!cmd) {
+		wpa_printf(MSG_ERROR, "Invalid elna command\n");
+		return -EINVAL;
+	}
+
+	iface = strchr(cmd, ' ');
+	if (!iface)
+		iface = cmd;
+	else {
+		*iface = '\0';
+		iface = cmd;
+	}
+
+	if_index = if_nametoindex(iface);
+	if (if_index == 0) {
+		wpa_printf(MSG_ERROR, "%s:iface not found\n", __func__);
+		return -EINVAL;
+	}
+
+	nlmsg = prepare_vendor_nlmsg(drv, iface,
+			             QCA_NL80211_VENDOR_SUBCMD_GET_WIFI_CONFIGURATION);
+	if (!nlmsg) {
+		ret = -ENOMEM;
+		wpa_printf(MSG_ERROR, "Fail to allocate nlmsg for elna cmd, error:%d\n", ret);
+		return ret;
+	}
+
+	attr = nla_nest_start(nlmsg, NL80211_ATTR_VENDOR_DATA);
+	if (!attr) {
+		ret = -ENOMEM;
+		wpa_printf(MSG_ERROR, "Fail to create elna nl attribute, error:%d\n", ret);
+		goto nlmsg_fail;
+	}
+
+	if (nla_put_u8(nlmsg, QCA_WLAN_VENDOR_ATTR_CONFIG_ELNA_BYPASS, 1)) {
+		ret = -EINVAL;
+		wpa_printf(MSG_ERROR, "Fail to put elna mode\n");
+		goto nlmsg_fail;
+	}
+	nla_nest_end(nlmsg, attr);
+	ret = send_nlmsg((struct nl_sock *)drv->global->nl, nlmsg, response_handler, &info);
+	if (ret) {
+		wpa_printf(MSG_ERROR, "Fail to send elna cmd nlmsg to driver, error:%d\n", ret);
+		return -EINVAL;
+	}
+
+	return 0;
+
+nlmsg_fail:
+	nlmsg_free(nlmsg);
+	return ret;
+}
+
 int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 				  size_t buf_len )
 {
@@ -5653,7 +5865,7 @@ int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 		ret = linux_get_ifhwaddr(drv->global->ioctl_sock, bss->ifname, macaddr);
 		if (!ret)
 			ret = os_snprintf(buf, buf_len,
-					  "Macaddr = " MACSTR "\n", MAC2STR(macaddr));
+					  "Macaddr = " MAC_ADDR_STR "\n", MAC_ADDR_ARRAY(macaddr));
 	} else if (os_strncasecmp(cmd, "SET_CONGESTION_REPORT ", 22) == 0) {
 		return wpa_driver_cmd_set_congestion_report(priv, cmd + 22);
 	} else if (os_strncasecmp(cmd, "SET_TXPOWER ", 12) == 0) {
@@ -5899,6 +6111,15 @@ int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 		/* Move cmd by string len and space */
 		cmd += 19;
 		return wpa_driver_cmd_send_peer_flush_queue_config(priv, cmd);
+	} else if (os_strncasecmp(cmd, "SPATIAL_REUSE ", 14) == 0) {
+		cmd += 14;
+		return wpa_driver_sr_cmd(priv, cmd, buf, buf_len);
+	} else if (os_strncasecmp(cmd, "SET_ELNABYPASS_MODE ", 20) == 0) {
+		cmd += 20;
+		return wpa_driver_set_elnabypass_cmd(priv, cmd, buf, buf_len);
+	} else if (os_strncasecmp(cmd, "GET_ELNABYPASS_MODE ", 20) == 0) {
+		cmd += 20;
+		return wpa_driver_get_elnabypass_cmd(priv, cmd, buf, buf_len);
 	} else { /* Use private command */
 		memset(&ifr, 0, sizeof(ifr));
 		memset(&priv_cmd, 0, sizeof(priv_cmd));
