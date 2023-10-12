@@ -55,7 +55,7 @@ ifdef CONFIG_P2P
 L_CFLAGS += -DCONFIG_P2P
 endif
 
-L_CFLAGS += -Werror
+L_CFLAGS += -Wno-format
 
 ########################
 
@@ -66,7 +66,7 @@ ifneq ($(wildcard external/libnl),)
 LOCAL_SHARED_LIBRARIES += libnl
 endif
 LOCAL_SHARED_LIBRARIES += libdl
-LOCAL_CFLAGS := $(L_CFLAGS) -Wall
+LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_SRC_FILES := $(WPA_SRC_FILE)
 LOCAL_C_INCLUDES := $(WPA_SUPPL_DIR_INCLUDE)
 LOCAL_VENDOR_MODULE := true

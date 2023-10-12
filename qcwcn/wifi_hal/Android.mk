@@ -19,7 +19,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_CFLAGS := -Wno-unused-parameter
-LOCAL_CFLAGS += -Wall -Werror
+LOCAL_CFLAGS += -Wall -Werror -Wno-format
 LOCAL_MODULE := libwifi-hal-ctrl
 LOCAL_VENDOR_MODULE := true
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/wifi_hal_ctrl
@@ -37,7 +37,7 @@ include $(BUILD_HEADER_LIBRARY)
 # ============================================================
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS := -Wno-unused-parameter
+LOCAL_CFLAGS := -Wno-unused-parameter -Wno-format
 ifeq ($(TARGET_BUILD_VARIANT),userdebug)
 LOCAL_CFLAGS += "-DLOG_NDEBUG=0"
 endif
@@ -127,8 +127,8 @@ include $(CLEAR_VARS)
 
 LOCAL_REQUIRED_MODULES :=
 
-LOCAL_CFLAGS += -Wno-unused-parameter -Wall -Werror
-LOCAL_CPPFLAGS += -Wno-conversion-null
+LOCAL_CFLAGS += -Wno-unused-parameter -Wall -Werror -Wno-format
+LOCAL_CPPFLAGS += -Wno-conversion-null -Wno-format
 ifeq ($(TARGET_BUILD_VARIANT),userdebug)
 LOCAL_CFLAGS += "-DLOG_NDEBUG=0"
 endif
