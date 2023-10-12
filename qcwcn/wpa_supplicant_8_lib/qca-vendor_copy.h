@@ -8,6 +8,12 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef QCA_VENDOR_H
 #define QCA_VENDOR_H
 

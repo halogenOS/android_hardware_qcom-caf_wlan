@@ -24,41 +24,11 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+
  * Changes from Qualcomm Innovation Center are provided under the following license:
- *
+
  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted (subject to the limitations in the
- * disclaimer below) provided that the following conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *   * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- *     contributors may be used to endorse or promote products derived
- *     from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "sync.h"
@@ -78,11 +48,8 @@
 #include "wificonfigcommand.h"
 #include "ifaceeventhandler.h"
 
-
 #define NUM_OF_SAR_LIMITS_SPECS 2
 #define NUM_OF_SPEC_CHAINS 2
-
-
 
 /* Implementation of the API functions exposed in wifi_config.h */
 wifi_error wifi_extended_dtim_config_set(wifi_request_id id,
@@ -594,7 +561,6 @@ cleanup:
     return ret;
 }
 
-
 wifi_error wifi_select_SARv01_tx_power_scenario(wifi_interface_handle handle,
                                          wifi_power_scenario scenario)
 {
@@ -784,7 +750,7 @@ wifi_error wifi_select_SARv02_tx_power_scenario(wifi_interface_handle handle,
 
 
     nlSpecList = wifiConfigCommand->attr_start(QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SPEC);
-    if(!nlSpecList)
+    if (!nlSpecList)
     {
         ALOGE("Cannot create spec list");
         ret = WIFI_ERROR_UNKNOWN;
@@ -794,11 +760,11 @@ wifi_error wifi_select_SARv02_tx_power_scenario(wifi_interface_handle handle,
 
     for (int i = 0; i < NUM_OF_SPEC_CHAINS; i++) {
         nlSpec = wifiConfigCommand->attr_start(0);
-        if(!nlSpec) {
+        if (!nlSpec) {
             ret = WIFI_ERROR_UNKNOWN;
             goto cleanup;
         }
-        if(wifiConfigCommand->put_u32(
+        if (wifiConfigCommand->put_u32(
             QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SPEC_CHAIN,
             i))
         {
@@ -807,7 +773,7 @@ wifi_error wifi_select_SARv02_tx_power_scenario(wifi_interface_handle handle,
             goto cleanup;
         }
 
-        if(wifiConfigCommand->put_u32(
+        if (wifiConfigCommand->put_u32(
             QCA_WLAN_VENDOR_ATTR_SAR_LIMITS_SPEC_POWER_LIMIT_INDEX,
             power_lim_idx))
         {
@@ -854,8 +820,8 @@ wifi_error wifi_select_tx_power_scenario(wifi_interface_handle handle,
               info->sar_version == QCA_WLAN_VENDOR_SAR_VERSION_3)
         return wifi_select_SARv02_tx_power_scenario(handle,scenario);
     else {
-      ALOGE("wifi_select_tx_power_scenario %u invalid or not supported", (u32)info->sar_version);
-      return WIFI_ERROR_UNKNOWN;
+        ALOGE("wifi_select_tx_power_scenario %u invalid or not supported", (u32)info->sar_version);
+        return WIFI_ERROR_UNKNOWN;
     }
 }
 
@@ -1664,4 +1630,78 @@ wifi_error wifi_multi_sta_set_use_case(wifi_handle handle,
 cleanup:
     delete wifiConfigCommand;
     return (wifi_error)ret;
+}
+
+/**
+ * Invoked to set voip optimization mode for the provided STA iface
+ */
+ wifi_error wifi_set_voip_mode(wifi_interface_handle iface, wifi_voip_mode mode)
+{
+    int requestId;
+    WiFiConfigCommand *wifiConfigCommand;
+    wifi_error ret;
+
+    struct nlattr *nlData;
+    interface_info *ifaceInfo = getIfaceInfo(iface);
+
+    wifi_handle wifiHandle = getWifiHandle(iface);
+    if (!wifiHandle) {
+        ALOGE("%s: Error wifi_handle NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    requestId = get_requestid();
+    ALOGV("%s: voip mode=%d", __FUNCTION__, mode);
+    wifiConfigCommand = new WiFiConfigCommand(
+                            wifiHandle,
+                            requestId,
+                            OUI_QCA,
+                            QCA_NL80211_VENDOR_SUBCMD_SET_WIFI_CONFIGURATION);
+
+    if (wifiConfigCommand == NULL) {
+        ALOGE("%s: Error wifiConfigCommand NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    /* Create the NL message. */
+    ret = wifiConfigCommand->create();
+    if (ret < 0) {
+        ALOGE("%s: failed to create NL msg. Error:%d", __FUNCTION__, ret);
+        goto cleanup;
+    }
+
+    /* Set the interface Id of the message. */
+    ret = wifiConfigCommand->set_iface_id(ifaceInfo->name);
+    if (ret < 0) {
+        ALOGE("%s: failed to set iface id. Error:%d", __FUNCTION__, ret);
+        goto cleanup;
+    }
+
+    /* Add the vendor specific attributes for the NL command. */
+    nlData = wifiConfigCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
+    if (!nlData) {
+        ALOGE("%s: failed attr_start for VENDOR_DATA", __FUNCTION__);
+        ret = WIFI_ERROR_UNKNOWN;
+        goto cleanup;
+    }
+
+    if (wifiConfigCommand->put_u8(QCA_WLAN_VENDOR_ATTR_CONFIG_WFC_STATE,
+        (mode==WIFI_VOIP_MODE_ON) ? 1 : 0)) {
+        ALOGE("%s: failed to put vendor data", __FUNCTION__);
+        ret = WIFI_ERROR_UNKNOWN;
+        goto cleanup;
+    }
+    wifiConfigCommand->attr_end(nlData);
+
+    /* Send the NL msg. */
+    wifiConfigCommand->waitForRsp(false);
+    ret = wifiConfigCommand->requestEvent();
+    if (ret != 0) {
+        ALOGE("%s: requestEvent Error:%d", __FUNCTION__, ret);
+        goto cleanup;
+    }
+
+cleanup:
+    delete wifiConfigCommand;
+    return ret;
 }
